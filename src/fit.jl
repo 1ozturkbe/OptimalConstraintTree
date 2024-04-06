@@ -1,4 +1,4 @@
-using Serialization
+
 
 """ Helper function for merging learner arguments. """
 function merge_kwargs(valid_keys; kwargs...)
@@ -477,7 +477,7 @@ function learn_constraint!(bbc::BlackBoxClassifier, algs::Union{Nothing, Array{S
                 "time" => time()-ts)
             )
 
-            @info "Trained a $(alg) with ACCURACY=$(score)"
+            @info "Trained $(alg) with ACCURACY=$(score)"
             if score >= best_score
                 best_alg_name = alg
                 best_score  = score
@@ -490,9 +490,7 @@ function learn_constraint!(bbc::BlackBoxClassifier, algs::Union{Nothing, Array{S
 
     lnr, score, args = best_model
     @info "Best model: $(best_alg_name) with ACCURACY=$(score)"
-    #println("SERIALIZING")
-    serialize("dump/benchmarks/best_algs/model_$(bbc.name).jls", Dict("lnr" => lnr, "alg"=> best_alg_name, "score" => score, "vars" => string.(bbc.vars), "X" => bbc.X, "Y" => bbc.Y))
-    #serialize("dump/benchmarks/best_algs/model_$(bbc.name).jls", bbc)
+    
     push!(bbc.learners, lnr)
     push!(bbc.accuracies, score) # TODO: add ability to specify criterion. 
     push!(bbc.learner_kwargs, args)

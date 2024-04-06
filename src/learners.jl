@@ -105,8 +105,7 @@ LEARNER_DICT = Dict(
         "CART" => base_cart_classifier,
         "SVM" => SVM_Classifier,
         "GBM" => GBM_Classifier,
-        "MLP" => MLP_Classifier,
-        "MPC" => MPC_Classifier
+        "MLP" => MLP_Classifier
     ),
     "regression" => Dict(
         "OCT" => base_regressor,

@@ -762,21 +762,13 @@ function descend!(gm::GlobalModel; append_x0=true,use_hessian=true, kwargs...)
         prev_feas = feas
         feas = is_feasible(gm)
 
-        try
-            # Saving solution dict for JuMP-style recovery.
-            # TODO: do not regenerate soldict unless final solution. 
-            gm.soldict = Dict(key => JuMP.getvalue.(gm.model[key]) for (key, value) in gm.model.obj_dict)
+        # Saving solution dict for JuMP-style recovery.
+        # TODO: do not regenerate soldict unless final solution. 
+        gm.soldict = Dict(key => JuMP.getvalue.(gm.model[key]) for (key, value) in gm.model.obj_dict)
 
-            # Delete gradient constraints (TODO: perhaps add constraints to avoid cycling?)
-            for con in constrs
-                delete(gm.model, con)
-            end
-        catch
-            # Delete gradient constraints (TODO: perhaps add constraints to avoid cycling?)
-            for con in constrs
-                delete(gm.model, con)
-            end
-            throw(error("Infeasible descend"))
+        # Delete gradient constraints (TODO: perhaps add constraints to avoid cycling?)
+        for con in constrs
+            delete(gm.model, con)
         end
     end
 
@@ -822,8 +814,6 @@ end
 
 """ Complete solution procedure for GlobalModel. """
 function globalsolve!(gm::GlobalModel; repair=true, opt_sampling=false)
-    
-    clear_tree_constraints!(gm)
 
     @info "GlobalModel " * gm.name * " solution in progress..."
 
@@ -855,23 +845,23 @@ function globalsolve!(gm::GlobalModel; repair=true, opt_sampling=false)
     @info "Solving MIP..."
     # print(gm.model)
 
-    set_optimizer_attribute(gm.model, "TimeLimit", 60)
+    # set_optimizer_attribute(gm.model, "TimeLimit", 60)
     optimize!(gm) 
 
     gm.relax_epsilon = JuMP.value.(gm.relax_var)[1]
 
     if repair    
         try
-            set_optimizer_attribute(gm.model, "TimeLimit", 30)
+            # set_optimizer_attribute(gm.model, "TimeLimit", 30)
             
-            set_param(gm, :step_penalty, 0.)
-            set_param(gm, :equality_penalty, 0.)
+            # set_param(gm, :step_penalty, 0.)
+            # set_param(gm, :equality_penalty, 0.)
             status = descend!(gm)
-            if status >= 2
-                set_param(gm, :step_penalty, 10^8)
-                set_param(gm, :equality_penalty, 10^8)
-                descend!(gm)
-            end
+            # if status >= 2
+            #     set_param(gm, :step_penalty, 10^8)
+            #     set_param(gm, :equality_penalty, 10^8)
+            #     descend!(gm)
+            # end
             
         catch
             @warn("Descend failed") 

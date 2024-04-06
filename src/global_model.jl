@@ -189,9 +189,9 @@ function add_nonlinear_constraint(gm::GlobalModel,
                 set_param(new_bbl, :n_samples, Int(ceil(get_param(gm, :sample_coeff)*sqrt(length(vars)))))
                 push!(gm.bbls, new_bbl)
             else 
-                if length(vars) < 30 && "OCT" ∉ alg_list 
-                    push!(alg_list, "OCT")
-                end
+                # if length(vars) < 30 && "OCT" ∉ alg_list 
+                #     push!(alg_list, "OCT")
+                # end
                 new_bbl = BlackBoxClassifier(constraint = constraint, vars = vars, expr_vars = expr_vars,
                 equality = equality, name = name, alg_list = alg_list, hash = constr_hash)
                 set_param(new_bbl, :n_samples, Int(ceil(get_param(gm, :sample_coeff)*sqrt(length(vars)))))

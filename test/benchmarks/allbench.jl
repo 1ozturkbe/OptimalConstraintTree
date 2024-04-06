@@ -172,13 +172,6 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
     function solve_baron(name, folder)
         m = GAMS_to_baron_model(OCTHaGOn.GAMS_DIR*"$(folder)\\", name*".gms")
         optimize!(m)
-        
-        x = all_variables(model)
-        x_solution = value.(x)
-        
-        sol_dict = Dict(zip(string.(x), x_solution))
-
-        serialize("dump/benchmarks/best_algs/baron_$(name).jls", sol_dict)
 
         return JuMP.objective_value(m), DataFrame()
     end
@@ -245,35 +238,63 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
             # if name ∉ ["ex2_1_6","ex5_4_3","ex2_1_1","ex2_1_8","ex5_4_4","st_e30","ex8_4_2","ex7_2_4","ex5_2_5","ex6_2_12","ex8_4_1","st_e04","alkyl"]
             #     continue
             # end
-
-            # if name ∈  ["ex4_1_1","ex4_1_2","ex4_1_3","ex4_1_6","ex4_1_7","prob06","ex4_1_8","ex4_1_9","st_e01","st_e08","st_e09","st_e17","st_e18","st_e19","st_e22","st_e23","st_e24","st_e26","st_ht","ex6_2_8","st_cqpjk2","st_e02","st_e11","ex6_2_12","ex6_2_14","ex6_2_9","sample","st_bpv1","st_bpv2","st_e04","st_e12","st_e41","ex2_1_1","ex3_1_2","st_e05","ex6_2_10","ex6_2_13","ex7_2_2","st_bsj3","st_bsj4","st_e21","ex5_2_4","ex7_2_1","ex3_1_1","ex5_4_2","ex7_2_3","ex7_2_4","st_iqpbk1","st_iqpbk2","ex5_2_2_case1","ex5_2_2_case2","ex5_2_2_case3","ex6_2_5","ex6_2_7","st_e33","alkylation","ex2_1_5"]
+            # if name ∉ ["prob06"]
             #     continue
             # end
 
-            # if name ∉ ["ex2_1_8","ex2_1_1","ex5_4_4","ex5_4_3","ex8_4_1","ex5_2_5","st_e16","ex5_2_4","ex6_2_8","st_e03","ex5_3_2","ex6_2_7","st_bsj4"]
+            # if name ∉ ["ex5_3_2","ex8_4_1","ex2_1_8","ex8_4_2","ex5_4_4","ex5_2_5","ex8_2_1a","ex8_2_4a","ex8_2_1b","ex8_2_4b","ex5_3_3","ex8_3_9","ex8_3_3","ex8_3_2","ex8_3_4","ex8_3_14"]
             #     continue
             # end
 
-            try
-                baron_obj, df_algs = solve_baron(name, folder)
-            catch 
-                println("Coudn't solve baron for $(name). SKipping") 
+            if name ∉ ["prob06",
+                "st_e18",
+                "st_e11",
+                "st_e02",
+                "sample",
+                "st_e04",
+                "ex6_2_14",
+                "st_e05",
+                "ex7_2_2",
+                "ex6_2_10",
+                "ex3_1_1",
+                "ex7_2_4",
+                "ex5_4_2",
+                "ex6_2_7",
+                "st_e33",
+                "st_e03",
+                "process",
+                "st_e07",
+                "st_e16",
+                "st_e30",
+                "alkyl",
+                "ex8_4_5",
+                "ex5_4_3",
+                "ex5_3_2",
+                "ex8_4_2",
+                "ex5_2_5",
+                "ex8_2_4a",
+                "ex8_3_9",
+                "ex8_3_3",
+                "ex8_3_14",
+                "ex8_3_2",
+                "ex8_3_4"
+            ]
                 continue
             end
-
+            
             solved = false
             for oct_sampling in [false]
 
                 global gm = create_gm(name, folder)
                 ts = time()
                 id = 1
-                for ro_factor in [0.0, 0.01, 0.1]#[0.0,0.01,0.1,0.5,1]
-                    for relax_coeff in [0.0, 1e2] #[0.0,1e2,1e4]
+                for ro_factor in [0.0]#[0.0,0.01,0.1,0.5,1]
+                    for relax_coeff in [0.0] #[0.0,1e2,1e4]
                         for hessian in [false]
                             for momentum in [0.]
-                                # if solved 
-                                #     continue
-                                # end
+                                if solved 
+                                    continue
+                                end
 
                                 n_bbls = length([bbl for bbl in gm.bbls if (bbl isa BlackBoxClassifier || bbl isa BlackBoxRegressor)])
                                 baron_obj = 0.0
@@ -283,11 +304,7 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
                                     println("Couldn't parse objective for $(name)") 
                                     continue
                                 end
-
-                                row_id = size(df_all, 1)
-
                                 df_tmp = DataFrame(
-                                    "row_id" => row_id,
                                     "gm" => NaN, 
                                     "baron" => baron_obj,
                                     "diff" => NaN,
@@ -303,8 +320,7 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
                                     "relax_epsilon" => 0,
                                     "momentum" => NaN,
                                     "hessian" => false,
-                                    "oct_sampling" => false,
-                                    "cvx_constr" => false,
+                                    "oct_sampling" => false
                                 )
                                 
                                 id += 1
@@ -351,8 +367,6 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
                                     if abs(1-subopt) <= 1e-3  
                                         solved = true
                                     end
-                                    
-                                    
 
                                     df_tmp[!, "gm"] = [gm_obj]
                                     df_tmp[!, "diff"] = [gm_obj-baron_obj]
@@ -366,14 +380,8 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
                                     df_tmp[!, "momentum"] = [get_param(gm, :momentum)]
                                     df_tmp[!, "hessian"] = [get_param(gm, :second_order_repair)]
                                     df_tmp[!, "oct_sampling"] = [get_param(gm, :oct_sampling)]
-                                    df_tmp[!, "cvx_constr"] = [get_param(gm, :convex_constrs)]
-                                    
-                                    new_row = hcat(df_tmp, DataFrame(row))
-                                    
-                                    
-                                    
-                                    df_algs[!, "row_id"] = [row_id for _ = 1:size(df_algs, 1)]
 
+                                    new_row = hcat(df_tmp, DataFrame(row))
                                     append!(df_all, new_row)
                                     append!(df_algs_all, df_algs)
 
@@ -392,10 +400,10 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
 
                                 try
                                     csv_path = output_path*"benchmark$(suffix).csv"
-                                    csv_path_alg = output_path*"benchmark_alg$(suffix).csv"
+                                    #csv_path_alg = output_path*"benchmark_alg$(suffix).csv"
                                     #println(csv_path)
                                     CSV.write(csv_path, df_all)
-                                    CSV.write(csv_path_alg, df_algs_all)
+                                    #CSV.write(csv_path_alg, df_algs_all)
                                 catch
                                     println("Couldn't write to CSV")
                                 end
@@ -411,5 +419,6 @@ end
 
 folders = ["global"]
 
-solve_and_benchmark(folders; alg_list = ["GBM", "SVM", "MLP"])
+solve_and_benchmark(folders; alg_list = ["OCT"])
 #"GBM", "SVM", "MLP"
+
