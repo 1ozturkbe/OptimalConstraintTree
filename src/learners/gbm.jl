@@ -214,7 +214,7 @@ function fit_cls_helper(lnr::GBM_Classifier, X::DataFrame, Y::Array; equality=fa
         end
     end
     df[!,"output"] = Y_hat;
-    return jlboost(df, "output"; verbose=false, max_depth = lnr.max_depth);
+    return jlboost(df, "output"; verbose=false, max_depth = lnr.max_depth, nrounds=lnr.nrounds);
 end
 
 """

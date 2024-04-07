@@ -379,7 +379,7 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
 
                                     println(df_all)
 
-                                    # break
+                                    exit(-2)
                                 catch e
                                     df_tmp[!, "solved"] = [0]
 

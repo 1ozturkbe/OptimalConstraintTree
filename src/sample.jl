@@ -280,10 +280,17 @@ function uniform_sample_and_eval!(bbl::BlackBoxLearner;
     end
 
     if get_param(gm, :oct_sampling) && (bbl isa BlackBoxClassifier) 
+        # Saving code 
+        pre_len = 1:length(bbl.Y)
+        #####################################################################
         df = oct_sampling(bbl)
         if (size(df,1) >0)
             eval!(bbl, df)
         end
+
+        df_c = copy(bbl.X)
+        df_c[!, "Y"] = bbl.Y
+        df_c[!, "oct"] = (1:size(df_c, 1)) .>= pre_len
     end
 
     return 
