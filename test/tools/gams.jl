@@ -339,151 +339,151 @@ function replace_tokens(s)
     # end
 end
 
-function GAMS_to_baron_model(GAMS_DIR::String, filename::String)
-    global model = JuMP.Model(with_optimizer(BARON.Optimizer, PrLevel=1, MaxTime=1500))
-    # Parsing GAMS Files
-    lexed = GAMSFiles.lex(GAMS_DIR * filename)
-    gams = GAMSFiles.parsegams(GAMS_DIR * filename)
-    GAMSFiles.parseconsts!(gams)
-    #println(alg_list)
-    vars = GAMSFiles.getvars(gams["variables"])
+# function GAMS_to_baron_model(GAMS_DIR::String, filename::String)
+#     global model = JuMP.Model(with_optimizer(BARON.Optimizer, PrLevel=1, MaxTime=1500))
+#     # Parsing GAMS Files
+#     lexed = GAMSFiles.lex(GAMS_DIR * filename)
+#     gams = GAMSFiles.parsegams(GAMS_DIR * filename)
+#     GAMSFiles.parseconsts!(gams)
+#     #println(alg_list)
+#     vars = GAMSFiles.getvars(gams["variables"])
 
-    sets = Dict{String, Any}()
-    if haskey(gams, "sets")
-        sets = gams["sets"]
-    end
-    preexprs, bodyexprs = Expr[], Expr[]
-    if haskey(gams, "parameters") && haskey(gams, "assignments")
-        GAMSFiles.parseassignments!(preexprs, gams["assignments"], gams["parameters"], sets)
-    end
+#     sets = Dict{String, Any}()
+#     if haskey(gams, "sets")
+#         sets = gams["sets"]
+#     end
+#     preexprs, bodyexprs = Expr[], Expr[]
+#     if haskey(gams, "parameters") && haskey(gams, "assignments")
+#         GAMSFiles.parseassignments!(preexprs, gams["assignments"], gams["parameters"], sets)
+#     end
 
-    # Getting variables
-    global vardict, constdict = generate_variables!(model, gams) # Actual JuMP variables
+#     # Getting variables
+#     global vardict, constdict = generate_variables!(model, gams) # Actual JuMP variables
 
-    # Getting objective
-    if gams["minimizing"] isa String
-        @objective(model, Min, JuMP.variable_by_name(model, gams["minimizing"]))
-    else
-        @objective(model, Min, sum([JuMP.variable_by_name(i) for i in gams["minimizing"]]))
-    end
+#     # Getting objective
+#     if gams["minimizing"] isa String
+#         @objective(model, Min, JuMP.variable_by_name(model, gams["minimizing"]))
+#     else
+#         @objective(model, Min, sum([JuMP.variable_by_name(i) for i in gams["minimizing"]]))
+#     end
 
-    # Creating GlobalModel
-    #gm = OCTHaGOn.GlobalModel(model = model, name = replace(filename, ".gms" => ""))
-    equations = [] # For debugging purposes...
-    for (key, eq) in gams["equations"]
-        push!(equations, key => eq)
-    end
+#     # Creating GlobalModel
+#     #gm = OCTHaGOn.GlobalModel(model = model, name = replace(filename, ".gms" => ""))
+#     equations = [] # For debugging purposes...
+#     for (key, eq) in gams["equations"]
+#         push!(equations, key => eq)
+#     end
 
-    # Register the variables as they appear in the constraints
-    for (key, var) in vardict
-        eval(Meta.parse("global $(key) = vardict[:$(key)]"))
-        #eval(Meta.parse("$(key) = 0"))
-    end
-    #x31 = 1
+#     # Register the variables as they appear in the constraints
+#     for (key, var) in vardict
+#         eval(Meta.parse("global $(key) = vardict[:$(key)]"))
+#         #eval(Meta.parse("$(key) = 0"))
+#     end
+#     #x31 = 1
 
-    fn = nothing
-    varkeys = nothing
-    constr_fn = nothing
-    constr_expr = nothing
-    vars = nothing
-    for (key, eq) in equations#[1:end-1]
-        if key isa GAMSFiles.GText
-            constr_expr = eq_to_expr(eq, sets)
-            #println(constr_expr)
-            # Substitute constant variables
-            constkeys = find_vars_in_eq(eq, constdict)
-            const_pairs = Dict(constkey => model[constkey] for constkey in constkeys)
-            for (constkey, constval) in const_pairs
-                constr_expr = OCTHaGOn.substitute(constr_expr, :($constkey) => constval)
-            end
-            # Designate free variables
-            varkeys = find_vars_in_eq(eq, vardict)
-            if !(Symbol(gams["minimizing"]) in varkeys)
-                vars = Array{VariableRef}(OCTHaGOn.flat([vardict[varkey] for varkey in varkeys]))
-                input = Symbol.(varkeys)
-                constr_fn = :(($(input...),) -> $(constr_expr))
-                if length(input) == 1
-                    constr_fn = :($(input...) -> $(constr_expr))
-                end
+#     fn = nothing
+#     varkeys = nothing
+#     constr_fn = nothing
+#     constr_expr = nothing
+#     vars = nothing
+#     for (key, eq) in equations#[1:end-1]
+#         if key isa GAMSFiles.GText
+#             constr_expr = eq_to_expr(eq, sets)
+#             #println(constr_expr)
+#             # Substitute constant variables
+#             constkeys = find_vars_in_eq(eq, constdict)
+#             const_pairs = Dict(constkey => model[constkey] for constkey in constkeys)
+#             for (constkey, constval) in const_pairs
+#                 constr_expr = OCTHaGOn.substitute(constr_expr, :($constkey) => constval)
+#             end
+#             # Designate free variables
+#             varkeys = find_vars_in_eq(eq, vardict)
+#             if !(Symbol(gams["minimizing"]) in varkeys)
+#                 vars = Array{VariableRef}(OCTHaGOn.flat([vardict[varkey] for varkey in varkeys]))
+#                 input = Symbol.(varkeys)
+#                 constr_fn = :(($(input...),) -> $(constr_expr))
+#                 if length(input) == 1
+#                     constr_fn = :($(input...) -> $(constr_expr))
+#                 end
                 
-                s_constr = string(constr_expr)
-                s_constr = replace_tokens(s_constr)
-                #s_constr = replace(s_constr, r"power\(\s*([^,\s)]+)\s*,\s*([0-9]+)\s*\)" => s"\g<1>^\g<2>")
-                #s_constr = replace(s_constr, r"sqr\(\s*([^\s)]+)\s*\)" => s"\g<1>^2")
+#                 s_constr = string(constr_expr)
+#                 s_constr = replace_tokens(s_constr)
+#                 #s_constr = replace(s_constr, r"power\(\s*([^,\s)]+)\s*,\s*([0-9]+)\s*\)" => s"\g<1>^\g<2>")
+#                 #s_constr = replace(s_constr, r"sqr\(\s*([^\s)]+)\s*\)" => s"\g<1>^2")
                 
-                if is_equality(eq)
-                    #@constraint(m, Base.invokelatest(eval(constr_fn), vars...)==0)
-                    eval(Meta.parse("@NLconstraint(model, ("*s_constr*") == 0)"))
-                else
-                    #@constraint(m, Base.invokelatest(eval(constr_fn), vars...)>=0)
-                    eval(Meta.parse("@NLconstraint(model, ("*s_constr*") >= 0)"))
-                end
-                #OCTHaGOn.add_nonlinear_or_compatible(gm, constr_fn, vars = vars, expr_vars = [vardict[varkey] for varkey in varkeys],
-                #                        equality = is_equality(eq), name = gm.name * "_" * GAMSFiles.getname(key), alg_list = alg_list, regression = regression)
-            else
-                constr_expr = OCTHaGOn.substitute(constr_expr, :($(Symbol(gams["minimizing"]))) => 0)
-                # ASSUMPTION: objvar has positive coefficient, and is on the greater size. 
-                op = GAMSFiles.eqops[GAMSFiles.getname(eq)]
-                # if !(op in [:<, :>])
-                #     throw(OCTHaGOnException("Please make sure GAMS model has objvar on the greater than size of inequalities, " *
-                #                         " with a leading coefficient of 1."))
-                # end
-                varkeys = filter!(x -> x != Symbol(gams["minimizing"]), varkeys)
-                vars = Array{VariableRef}(OCTHaGOn.flat([vardict[varkey] for varkey in varkeys]))
-                input = Symbol.(varkeys)
-                constr_fn = :(($(input...),) -> -$(constr_expr))
-                if length(input) == 1
-                    constr_fn = :($(input...) -> -$(constr_expr))
-                end
-                obj_var = vardict[Symbol(gams["minimizing"])]
-                s_constr = string(constr_expr)
-                s_constr = replace_tokens(s_constr)
+#                 if is_equality(eq)
+#                     #@constraint(m, Base.invokelatest(eval(constr_fn), vars...)==0)
+#                     eval(Meta.parse("@NLconstraint(model, ("*s_constr*") == 0)"))
+#                 else
+#                     #@constraint(m, Base.invokelatest(eval(constr_fn), vars...)>=0)
+#                     eval(Meta.parse("@NLconstraint(model, ("*s_constr*") >= 0)"))
+#                 end
+#                 #OCTHaGOn.add_nonlinear_or_compatible(gm, constr_fn, vars = vars, expr_vars = [vardict[varkey] for varkey in varkeys],
+#                 #                        equality = is_equality(eq), name = gm.name * "_" * GAMSFiles.getname(key), alg_list = alg_list, regression = regression)
+#             else
+#                 constr_expr = OCTHaGOn.substitute(constr_expr, :($(Symbol(gams["minimizing"]))) => 0)
+#                 # ASSUMPTION: objvar has positive coefficient, and is on the greater size. 
+#                 op = GAMSFiles.eqops[GAMSFiles.getname(eq)]
+#                 # if !(op in [:<, :>])
+#                 #     throw(OCTHaGOnException("Please make sure GAMS model has objvar on the greater than size of inequalities, " *
+#                 #                         " with a leading coefficient of 1."))
+#                 # end
+#                 varkeys = filter!(x -> x != Symbol(gams["minimizing"]), varkeys)
+#                 vars = Array{VariableRef}(OCTHaGOn.flat([vardict[varkey] for varkey in varkeys]))
+#                 input = Symbol.(varkeys)
+#                 constr_fn = :(($(input...),) -> -$(constr_expr))
+#                 if length(input) == 1
+#                     constr_fn = :($(input...) -> -$(constr_expr))
+#                 end
+#                 obj_var = vardict[Symbol(gams["minimizing"])]
+#                 s_constr = string(constr_expr)
+#                 s_constr = replace_tokens(s_constr)
 
-                #s_constr = replace(s_constr, r"power\(\s*([^,\s)]+)\s*,\s*([0-9]+)\s*\)" => s"\g<1>^\g<2>")
-                #s_constr = replace(s_constr, r"sqr\(\s*([^\s)]+)\s*\)" => s"\g<1>^2")
-                #println(s_constr)
-                eval(Meta.parse("@NLconstraint(model, -("*string(s_constr)*") == $(obj_var))"))
-                #@NLconstraint(m, Base.invokelatest(eval(constr_fn), vars...) == vardict[Symbol(gams["minimizing"])])
-    #             OCTHaGOn.add_nonlinear_or_compatible(gm, constr_fn, vars = vars, expr_vars = [vardict[varkey] for varkey in varkeys],
-    #                 dependent_var = vardict[Symbol(gams["minimizing"])], equality = is_equality(eq), name = gm.name * "_" * GAMSFiles.getname(key), alg_list = alg_list, regression = regression)
-            end
-            fn = constr_fn
-        elseif key isa GAMSFiles.GArray
-            axs = GAMSFiles.getaxes(key.indices, sets)
-            idxs = collect(Base.product([collect(ax) for ax in axs]...))
-            #names = [gm.name * "_" * key.name * string(idx) for idx in idxs]
-            constr_expr = OCTHaGOn.eq_to_expr(eq, sets)
-                    # Substitute constant variables
-            constkeys = OCTHaGOn.find_vars_in_eq(eq, constdict)
-            const_pairs = Dict(Symbol(constkey) => model[constkey] for constkey in constkeys)
-            for (constkey, constval) in const_pairs
-                constr_expr = OCTHaGOn.substitute(constr_expr, :($constkey) => constval)
-            end
-            # Designate free variables
-            varkeys = OCTHaGOn.find_vars_in_eq(eq, vardict)
-            vars = Array{VariableRef}(OCTHaGOn.flat([vardict[varkey] for varkey in varkeys]))
-            input = Symbol.(varkeys)
-            constr_fn = :(($(input...),) -> $(constr_expr))
-            if length(input) == 1
-                constr_fn = :($(input...) -> $(constr_expr))
-            end
-            constr_fns = []
-            for idx in idxs
-                new_fn = copy(constr_fn)
-                for ax_number in 1:length(axs)
-                    new_fn = OCTHaGOn.substitute(new_fn, Symbol(key.indices[ax_number].text) => idx[ax_number]);
-                end
-                push!(constr_fns, new_fn)
-            end
-    #         for i = 1:length(idxs)
-    #             OCTHaGOn.add_nonlinear_or_compatible(gm, constr_fns[i], vars = vars, expr_vars = [vardict[varkey] for varkey in varkeys],
-    #                                      equality = is_equality(eq),
-    #                                      name = names[i], alg_list = alg_list, regression = regression)
-    #         end
-        end
-    end
-    return model
-end
+#                 #s_constr = replace(s_constr, r"power\(\s*([^,\s)]+)\s*,\s*([0-9]+)\s*\)" => s"\g<1>^\g<2>")
+#                 #s_constr = replace(s_constr, r"sqr\(\s*([^\s)]+)\s*\)" => s"\g<1>^2")
+#                 #println(s_constr)
+#                 eval(Meta.parse("@NLconstraint(model, -("*string(s_constr)*") == $(obj_var))"))
+#                 #@NLconstraint(m, Base.invokelatest(eval(constr_fn), vars...) == vardict[Symbol(gams["minimizing"])])
+#     #             OCTHaGOn.add_nonlinear_or_compatible(gm, constr_fn, vars = vars, expr_vars = [vardict[varkey] for varkey in varkeys],
+#     #                 dependent_var = vardict[Symbol(gams["minimizing"])], equality = is_equality(eq), name = gm.name * "_" * GAMSFiles.getname(key), alg_list = alg_list, regression = regression)
+#             end
+#             fn = constr_fn
+#         elseif key isa GAMSFiles.GArray
+#             axs = GAMSFiles.getaxes(key.indices, sets)
+#             idxs = collect(Base.product([collect(ax) for ax in axs]...))
+#             #names = [gm.name * "_" * key.name * string(idx) for idx in idxs]
+#             constr_expr = OCTHaGOn.eq_to_expr(eq, sets)
+#                     # Substitute constant variables
+#             constkeys = OCTHaGOn.find_vars_in_eq(eq, constdict)
+#             const_pairs = Dict(Symbol(constkey) => model[constkey] for constkey in constkeys)
+#             for (constkey, constval) in const_pairs
+#                 constr_expr = OCTHaGOn.substitute(constr_expr, :($constkey) => constval)
+#             end
+#             # Designate free variables
+#             varkeys = OCTHaGOn.find_vars_in_eq(eq, vardict)
+#             vars = Array{VariableRef}(OCTHaGOn.flat([vardict[varkey] for varkey in varkeys]))
+#             input = Symbol.(varkeys)
+#             constr_fn = :(($(input...),) -> $(constr_expr))
+#             if length(input) == 1
+#                 constr_fn = :($(input...) -> $(constr_expr))
+#             end
+#             constr_fns = []
+#             for idx in idxs
+#                 new_fn = copy(constr_fn)
+#                 for ax_number in 1:length(axs)
+#                     new_fn = OCTHaGOn.substitute(new_fn, Symbol(key.indices[ax_number].text) => idx[ax_number]);
+#                 end
+#                 push!(constr_fns, new_fn)
+#             end
+#     #         for i = 1:length(idxs)
+#     #             OCTHaGOn.add_nonlinear_or_compatible(gm, constr_fns[i], vars = vars, expr_vars = [vardict[varkey] for varkey in varkeys],
+#     #                                      equality = is_equality(eq),
+#     #                                      name = names[i], alg_list = alg_list, regression = regression)
+#     #         end
+#         end
+#     end
+#     return model
+# end
 
 # """ Solver wrapper for GAMS benchmarking. """
 # function nonlinear_solve(gm::GlobalModel; solver = IPOPT_SILENT)

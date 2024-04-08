@@ -169,12 +169,12 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
     
     end
 
-    function solve_baron(name, folder)
-        m = GAMS_to_baron_model(OCTHaGOn.GAMS_DIR*"$(folder)\\", name*".gms")
-        optimize!(m)
+    # function solve_baron(name, folder)
+    #     m = GAMS_to_baron_model(OCTHaGOn.GAMS_DIR*"$(folder)\\", name*".gms")
+    #     optimize!(m)
 
-        return JuMP.objective_value(m), DataFrame()
-    end
+    #     return JuMP.objective_value(m), DataFrame()
+    # end
 
     df_all = DataFrame()
     df_algs_all = DataFrame()

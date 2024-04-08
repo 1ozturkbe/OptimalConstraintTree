@@ -11,10 +11,10 @@ load:
 
     using DataFrames
     using JuMP
-    using BARON
-    using CPLEX
+    # using BARON
+    # using CPLEX
     using CSV
-    # using Gurobi
+    using Gurobi
     # using Ipopt
     using JLD
     using MathOptInterface
