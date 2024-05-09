@@ -821,7 +821,7 @@ function descend!(gm::GlobalModel; append_x0=true,use_hessian=true, kwargs...)
 end
 
 """ Complete solution procedure for GlobalModel. """
-function globalsolve!(gm::GlobalModel; repair=true, opt_sampling=false)
+function globalsolve!(gm::GlobalModel; repair=true, sampling_methods=["boundary", "lh", "knn", "derivative", "oct"])
     
     clear_tree_constraints!(gm)
 
@@ -837,7 +837,7 @@ function globalsolve!(gm::GlobalModel; repair=true, opt_sampling=false)
     
     for bbl in gm.bbls
         if !is_sampled(bbl)
-            uniform_sample_and_eval!(bbl; opt_sampling=opt_sampling, gm=gm)
+            uniform_sample_and_eval!(bbl; sampling_methods=sampling_methods, gm=gm)
         end
     end
     set_param(gm, :ignore_accuracy, true)
@@ -863,7 +863,7 @@ function globalsolve!(gm::GlobalModel; repair=true, opt_sampling=false)
     if repair    
         try
             set_optimizer_attribute(gm.model, "TimeLimit", 30)
-            
+            println("Starting descend")
             set_param(gm, :step_penalty, 0.)
             set_param(gm, :equality_penalty, 0.)
             status = descend!(gm)

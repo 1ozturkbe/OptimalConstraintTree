@@ -3,7 +3,7 @@ include("../load.jl")
 
 
 REPAIR = true 
-OPT_SAMPLING = false
+# OPT_SAMPLING = false
 
 using Serialization: serialize, deserialize
 using DataFrames, Dates 
@@ -31,6 +31,47 @@ function load_gam_from_path(path; force_reload=false)
     end
 
     return gams 
+end
+
+"""
+Get problems that are already run
+"""
+function get_unique_names_from_csvs()
+    # Get the list of all CSV files with the pattern 'results_*.csv' in the given directory
+    # csv_files = glob("results_*.csv", directory)
+
+    # # Check if there are any CSV files in the list
+    # if isempty(csv_files)
+    #     error("No CSV files found matching the pattern 'results_*.csv' in the specified directory.")
+    # end
+
+    # Initialize an empty DataFrame to hold all concatenated data
+    all_data = DataFrame()
+
+    # Loop over the CSV files and read each one, then concatenate them into `all_data`
+    # for csv_file in csv_files
+    #     df = CSV.read(csv_file, DataFrame)
+    #     all_data = vcat(all_data, df)
+    # end
+
+    for i in 1:10
+        csv_file = "dump/benchmarks/revision/results_$(i).csv"
+        try
+            df = DataFrame(CSV.File(csv_file))
+            all_data = vcat(all_data, df)
+        catch
+            break
+        end
+    end
+    # println(names(all_data))
+    # Get the unique values from the "name" column
+    if !hasproperty(all_data, :name)
+        error("The 'name' column was not found in the concatenated data.")
+    end
+
+    unique_names = unique(all_data.name)
+
+    return unique_names
 end
 
 """
@@ -146,6 +187,8 @@ function get_problem_stats(folder_name; force_reload=false, keep_only_selected=t
     return df
 end
 
+already_run = get_unique_names_from_csvs()
+
 function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
     
     function create_gm(name, folder)
@@ -155,12 +198,12 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
         return gm 
     end
 
-    function solve_gm(gm; relax_coeff=0, ro_factor=0)
+    function solve_gm(gm; relax_coeff=0, ro_factor=0, sampling_methods=["boundary", "lh", "knn", "derivative", "oct"])
         
         set_param(gm, :ro_factor, ro_factor)
         gm.relax_coeff = relax_coeff
 
-        globalsolve!(gm; repair=REPAIR, opt_sampling=OPT_SAMPLING)
+        globalsolve!(gm; repair=REPAIR, sampling_methods=sampling_methods)
         #feas_gap(gm)
         # Performance of the different algorithms (e.g. GBM, SVM, OCT)
         df_algs = vcat([bbl.learner_performance for bbl in gm.bbls]...)
@@ -254,23 +297,33 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
             #     continue
             # end
 
-            try
-                baron_obj, df_algs = solve_baron(name, folder)
-            catch 
-                println("Coudn't solve baron for $(name). SKipping") 
+            if name in already_run
                 continue
             end
 
+            # try
+            #     baron_obj, df_algs = solve_baron(name, folder)
+            # catch 
+            #     println("Coudn't solve baron for $(name). SKipping") 
+            #     continue
+            # end
+            
+            sample_method_list = [
+                ["boundary", "lh"],
+                ["boundary", "lh", "knn"],
+                ["boundary", "lh", "oct"],
+                ["boundary", "lh", "knn", "oct"]
+            ]
             solved = false
-            for oct_sampling in [false]
+            for sampling_methods in sample_method_list
 
                 global gm = create_gm(name, folder)
                 ts = time()
                 id = 1
-                for ro_factor in [0.0, 0.01, 0.1]#[0.0,0.01,0.1,0.5,1]
-                    for relax_coeff in [0.0, 1e2] #[0.0,1e2,1e4]
+                for ro_factor in [0.0,0.01,0.1,0.5,1]
+                    for relax_coeff in [0.0,1e2,1e4]
                         for hessian in [false]
-                            for momentum in [0.]
+                            for momentum in [0., 0.1]
                                 # if solved 
                                 #     continue
                                 # end
@@ -301,9 +354,10 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
                                     "relax_coeff" => relax_coeff,
                                     "n_bbls" => n_bbls,
                                     "relax_epsilon" => 0,
+                                    "sampling_methods"=> "[\""*join(sampling_methods, "\",\"")*"\"]",
                                     "momentum" => NaN,
                                     "hessian" => false,
-                                    "oct_sampling" => false,
+                                    "oct_sampling" => ("oct" in sampling_methods),
                                     "cvx_constr" => false,
                                 )
                                 
@@ -330,9 +384,9 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
                                     
                                     set_param(gm, :momentum, momentum)
                                     set_param(gm, :second_order_repair, hessian)
-                                    set_param(gm, :oct_sampling, oct_sampling)
+                                    set_param(gm, :oct_sampling, ("oct" in sampling_methods))
 
-                                    df_algs, gm_obj, gm = solve_gm(gm; ro_factor=ro_factor, relax_coeff=relax_coeff)
+                                    df_algs, gm_obj, gm = solve_gm(gm; ro_factor=ro_factor, relax_coeff=relax_coeff, sampling_methods=sampling_methods)
 
 
                                     gm_time = time()-ts
@@ -379,7 +433,7 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
 
                                     println(df_all)
 
-                                    exit(-2)
+                                    #exit(-2)
                                 catch e
                                     df_tmp[!, "solved"] = [0]
 
@@ -413,3 +467,5 @@ folders = ["global"]
 
 solve_and_benchmark(folders; alg_list = ["GBM", "SVM", "MLP"])
 #"GBM", "SVM", "MLP"
+
+# print(get_unique_names_from_csvs())

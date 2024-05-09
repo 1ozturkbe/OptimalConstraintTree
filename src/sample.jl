@@ -1,3 +1,5 @@
+using CSV
+
 """
     truncate_sigfigs(data, digits = 8)
 
@@ -210,46 +212,70 @@ Keyword arguments:
     boundary_fraction: maximum ratio of boundary samples
     lh_iterations: number of GA populations for LHC sampling (0 is a random LH.)
 """
-function uniform_sample_and_eval!(bbl::BlackBoxLearner;
+function uniform_sample_and_eval!(bbl::BlackBoxLearner; sampling_methods::Array{String}=["boundary", "lh", "knn", "derivative", "oct"],
                           boundary_fraction::Float64 = 0.5,
-                          lh_iterations::Int64 = 0, sample_density = 1.e-5, opt_sampling::Bool=false, gm::Union{GlobalModel,Nothing}=nothing)
+                          lh_iterations::Int64 = 0, sample_density = 1.e-5, gm::Union{GlobalModel,Nothing}=nothing)
     @assert size(bbl.X, 1) == 0 # TODO: fix this w.r.t. data-driven constraints. 
     vks = string.(bbl.vars)
     n_dims = length(vks);
     check_bounds(get_bounds(bbl))
-    df = boundary_sample(bbl, fraction = boundary_fraction)
-    eval!(bbl, df)
-    df = lh_sample(bbl, lh_iterations = lh_iterations, n_samples = get_param(bbl, :n_samples) - size(df, 1))
-    eval!(bbl, df);
 
+
+    s_labels = [
+        ["", -1]
+    ]
+
+
+    if "boundary" in sampling_methods
+        df = boundary_sample(bbl, fraction = boundary_fraction)
+        eval!(bbl, df)
+        push!(s_labels, ["boundaries", size(bbl.X, 1)])
+    end
+
+    if "lh" in sampling_methods
+        df = lh_sample(bbl, lh_iterations = lh_iterations, n_samples = get_param(bbl, :n_samples) - size(df, 1))
+        eval!(bbl, df);
+        push!(s_labels, ["lh_sample", size(bbl.X, 1)])
+    end
     og_num_samples = get_param(bbl, :n_samples)
     
-    for (num_samples, depth) in [(og_num_samples,4),(og_num_samples,5)]
-        df = refined_derivative_sampling(bbl, og_num_samples,depth )
-        if (size(df,1) >0)
-            eval!(bbl, df)
+    if "derivative" in sampling_methods
+        for (num_samples, depth) in [(og_num_samples,4),(og_num_samples,5)]
+            df = refined_derivative_sampling(bbl, og_num_samples,depth )
+            if (size(df,1) >0)
+                eval!(bbl, df)
+            end
         end
+        push!(s_labels, ["derivative", size(bbl.X, 1)])
     end
 
     bbl.max_Y = maximum(filter(!isinf, bbl.Y))
     bbl.min_Y = minimum(filter(!isinf, bbl.Y))
     
-    if opt_sampling
-        @info("Starting opt sampling. Samples before $(length(bbl.Y))")
-        opt_sample(gm, bbl)
-        @info("Samples after $(length(bbl.Y))")
-    end
 
     if bbl isa BlackBoxClassifier
+
+        if "opt" in sampling_methods
+            @info("Starting opt sampling. Samples before $(length(bbl.Y))")
+            opt_sample(gm, bbl)
+            push!(s_labels, ["opt", size(bbl.X, 1)])
+    
+            @info("Samples after $(length(bbl.Y))")
+        end
+
         if bbl.feas_ratio == 1.0
             @info(string(bbl.name) * " was not KNN sampled since it has no infeasible samples.")
         elseif bbl.feas_ratio == 0.0
             throw(OCTHaGOnException(string(bbl.name) * " has zero feasible samples. " *
                                "Please find at least one feasible sample, seed the data and KNN sample."))
         else
-            df = knn_sample(bbl, k= maximum([10, 2*length(bbl.vars) + 1]), sample_density = sample_density)
-            if size(df, 1) > 0
-                eval!(bbl, df)
+
+            if "knn" in sampling_methods
+                df = knn_sample(bbl, k= maximum([10, 2*length(bbl.vars) + 1]), sample_density = sample_density)
+                if size(df, 1) > 0
+                    eval!(bbl, df)
+                end
+                push!(s_labels, ["knn", size(bbl.X, 1)])
             end
         end
     end
@@ -287,12 +313,34 @@ function uniform_sample_and_eval!(bbl::BlackBoxLearner;
         if (size(df,1) >0)
             eval!(bbl, df)
         end
+        push!(s_labels, ["oct", size(bbl.X, 1)])
+        # df_c = copy(bbl.X)
+        # df_c[!, "Y"] = bbl.Y
+        # df_c[!, "oct"] = (1:size(df_c, 1)) .>= pre_len
+    end
+
+    if bbl isa BlackBoxClassifier
+        # Save samples to CSV for post-processing (not needed for the method)
 
         df_c = copy(bbl.X)
         df_c[!, "Y"] = bbl.Y
-        df_c[!, "oct"] = (1:size(df_c, 1)) .>= pre_len
-    end
+        df_c[!, "id"] = 1:size(df_c, 1)
+        df_c[!, "s_label"] .= "";
 
+        for i in 2:length(s_labels)
+            key, val, val_prev = s_labels[i][1],s_labels[i][2], s_labels[i-1][2] 
+            idxes = 1:size(df_c, 1)
+            mask = (idxes .>= val_prev) .& (idxes .< val)
+            df_c[mask, "s_label"] .= key
+        end
+        
+        for (k,v) in get_bounds(bbl.vars)
+            df_c[!, "lb_$(k)"] .= v[1]
+            df_c[!, "ub_$(k)"] .= v[2]
+        end
+        
+        # CSV.write("dump/sample_exports/samples_$(bbl.name).csv", df_c)
+    end
     return 
 end
 
