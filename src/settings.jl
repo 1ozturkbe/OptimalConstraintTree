@@ -27,7 +27,7 @@ function gm_defaults()
          :sample_density => 1e-5, # sets maximum sample density in Euclidian distance
          :abstol => 1e-4,
          :tighttol => 1e-8, # sets equality constraint tolerance. 
-         :convex_constrs => false,
+         :convex_constrs => true,
          # Params for gradient descent
          :max_iterations => 100,
          :step_size => 1e-3,

@@ -339,7 +339,7 @@ function uniform_sample_and_eval!(bbl::BlackBoxLearner; sampling_methods::Array{
             df_c[!, "ub_$(k)"] .= v[2]
         end
         
-        # CSV.write("dump/sample_exports/samples_$(bbl.name).csv", df_c)
+        CSV.write("dump/sample_exports/samples_$(bbl.name).csv", df_c)
     end
     return 
 end

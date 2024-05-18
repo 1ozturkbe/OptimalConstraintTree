@@ -561,6 +561,8 @@ function descend!(gm::GlobalModel; append_x0=true,use_hessian=true, kwargs...)
     while (!feas || !prev_feas ||
         (prev_feas && feas && d_improv >= get_param(gm, :abstol)) ||
         ct == 0) && ct < max_iterations
+
+        println("Iter $(ct)")
         prev_obj = gm.cost[end]
         constrs = []
         ct += 1
@@ -862,7 +864,7 @@ function globalsolve!(gm::GlobalModel; repair=true, sampling_methods=["boundary"
 
     if repair    
         try
-            set_optimizer_attribute(gm.model, "TimeLimit", 30)
+            set_optimizer_attribute(gm.model, "TimeLimit", 60)
             println("Starting descend")
             set_param(gm, :step_penalty, 0.)
             set_param(gm, :equality_penalty, 0.)

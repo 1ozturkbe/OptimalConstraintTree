@@ -54,7 +54,7 @@ function get_unique_names_from_csvs()
     #     all_data = vcat(all_data, df)
     # end
 
-    for i in 1:10
+    for i in 1:15
         csv_file = "dump/benchmarks/revision/results_$(i).csv"
         try
             df = DataFrame(CSV.File(csv_file))
@@ -65,13 +65,21 @@ function get_unique_names_from_csvs()
     end
     # println(names(all_data))
     # Get the unique values from the "name" column
-    if !hasproperty(all_data, :name)
-        error("The 'name' column was not found in the concatenated data.")
+
+
+    try
+        
+        if !hasproperty(all_data, :name)
+            error("The 'name' column was not found in the concatenated data.")
+        end
+
+        unique_names = unique(all_data.name)
+
+        return unique_names
+    catch
+        
+        return []
     end
-
-    unique_names = unique(all_data.name)
-
-    return unique_names
 end
 
 """
@@ -324,9 +332,9 @@ function solve_and_benchmark(folders; alg_list = ["GBM", "SVM"])
                     for relax_coeff in [0.0,1e2,1e4]
                         for hessian in [false]
                             for momentum in [0., 0.1]
-                                # if solved 
-                                #     continue
-                                # end
+                                if solved 
+                                    continue
+                                end
 
                                 n_bbls = length([bbl for bbl in gm.bbls if (bbl isa BlackBoxClassifier || bbl isa BlackBoxRegressor)])
                                 baron_obj = 0.0
