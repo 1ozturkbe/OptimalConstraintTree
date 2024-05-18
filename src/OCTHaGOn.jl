@@ -55,7 +55,6 @@ module OCTHaGOn
     include("learners/svm.jl")
     include("learners/gbm.jl")
     include("learners/mlp.jl")
-    include("learners/mpc.jl")
     include("learners.jl")
 
     #include("learners/iai.jl")

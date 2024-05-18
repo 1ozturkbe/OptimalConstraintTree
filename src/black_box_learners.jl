@@ -171,6 +171,54 @@ end
 Evaluates gradient of function through ForwardDiff. 
 TODO: speed-ups!. 
 """
+# function evaluate_gradient(bbl::BlackBoxLearner, data::DataFrame)
+#     @assert get_param(bbl, :gradients)
+#     @assert !isnothing(bbl.constraint)
+#     @assert(size(data, 2) == length(bbl.vars))
+#     if bbl.constraint isa JuMP.ConstraintRef
+#         return DataFrame(hcat([bbl.g(Array(row)) 
+#                 for row in eachrow(data[:, string.(bbl.vars)])]...)', string.(bbl.vars))
+#     elseif bbl.constraint isa Expr
+        
+#         bounds = get_bounds(bbl)
+#         bounds = Dict(string(key)=>value for (key, value) in bounds)
+#         lbs = [bounds[v][1] for v in string.(bbl.vars)]
+#         ubs = [bounds[v][2] for v in string.(bbl.vars)]
+#         arrs = deconstruct(data, bbl.vars, bbl.expr_vars, bbl.varmap)
+#         grads = hcat([bbl.g(Float64[flat(arr)...]) 
+#                             for arr in arrs]...)'
+        
+#         grad_rows = []
+#         for arr in arrs
+#             row = Float64[flat(arr)...]
+#             grad_row = []
+#             for j=1:3
+#                 grad_row = bbl.g(Array(row))
+#                 inf_vars_ids = (1:length(grad_row))[(grad_row .== Inf) .| isnan.(grad_row)]
+#                 if length(inf_vars_ids) ==0
+#                     break
+#                 end
+#                 signs = 2*(row-lbs .<=ubs-row ).-1
+#                 perts = []
+
+#                 for i=1:length(lbs)
+#                     pert = signs[i] == 1 ? (ubs[i]-row[i])*1e-2 : -(row[i]-lbs[i])*1e-2;
+#                     if i ∉ inf_vars_ids
+#                         pert = 0
+#                     end
+#                     push!(perts, pert)
+#                 end
+#                 # Perturb gradients if they are infinite
+#                 row += perts
+#             end
+#             push!(grad_rows, grad_row)
+            
+#         end
+#         grads = hcat(grad_rows...)'
+        
+#         return DataFrame(grads[:, bbl.datamap], string.(bbl.vars))
+#     end
+# end
 function evaluate_gradient(bbl::BlackBoxLearner, data::DataFrame)
     @assert get_param(bbl, :gradients)
     @assert !isnothing(bbl.constraint)
@@ -179,43 +227,9 @@ function evaluate_gradient(bbl::BlackBoxLearner, data::DataFrame)
         return DataFrame(hcat([bbl.g(Array(row)) 
                 for row in eachrow(data[:, string.(bbl.vars)])]...)', string.(bbl.vars))
     elseif bbl.constraint isa Expr
-        
-        bounds = get_bounds(bbl)
-        bounds = Dict(string(key)=>value for (key, value) in bounds)
-        lbs = [bounds[v][1] for v in string.(bbl.vars)]
-        ubs = [bounds[v][2] for v in string.(bbl.vars)]
         arrs = deconstruct(data, bbl.vars, bbl.expr_vars, bbl.varmap)
         grads = hcat([bbl.g(Float64[flat(arr)...]) 
                             for arr in arrs]...)'
-        
-        grad_rows = []
-        for arr in arrs
-            row = Float64[flat(arr)...]
-            grad_row = []
-            for j=1:3
-                grad_row = bbl.g(Array(row))
-                inf_vars_ids = (1:length(grad_row))[(grad_row .== Inf) .| isnan.(grad_row)]
-                if length(inf_vars_ids) ==0
-                    break
-                end
-                signs = 2*(row-lbs .<=ubs-row ).-1
-                perts = []
-
-                for i=1:length(lbs)
-                    pert = signs[i] == 1 ? (ubs[i]-row[i])*1e-2 : -(row[i]-lbs[i])*1e-2;
-                    if i ∉ inf_vars_ids
-                        pert = 0
-                    end
-                    push!(perts, pert)
-                end
-                # Perturb gradients if they are infinite
-                row += perts
-            end
-            push!(grad_rows, grad_row)
-            
-        end
-        grads = hcat(grad_rows...)'
-        
         return DataFrame(grads[:, bbl.datamap], string.(bbl.vars))
     end
 end

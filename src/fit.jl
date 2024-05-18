@@ -1,4 +1,4 @@
-using Serialization
+
 
 """ Helper function for merging learner arguments. """
 function merge_kwargs(valid_keys; kwargs...)
@@ -477,7 +477,7 @@ function learn_constraint!(bbc::BlackBoxClassifier, algs::Union{Nothing, Array{S
                 "time" => time()-ts)
             )
 
-            @info "Trained a $(alg) with ACCURACY=$(score)"
+            @info "Trained $(alg) with ACCURACY=$(score)"
             if score >= best_score
                 best_alg_name = alg
                 best_score  = score

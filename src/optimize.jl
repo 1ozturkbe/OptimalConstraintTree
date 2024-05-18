@@ -764,21 +764,13 @@ function descend!(gm::GlobalModel; append_x0=true,use_hessian=true, kwargs...)
         prev_feas = feas
         feas = is_feasible(gm)
 
-        try
-            # Saving solution dict for JuMP-style recovery.
-            # TODO: do not regenerate soldict unless final solution. 
-            gm.soldict = Dict(key => JuMP.getvalue.(gm.model[key]) for (key, value) in gm.model.obj_dict)
+        # Saving solution dict for JuMP-style recovery.
+        # TODO: do not regenerate soldict unless final solution. 
+        gm.soldict = Dict(key => JuMP.getvalue.(gm.model[key]) for (key, value) in gm.model.obj_dict)
 
-            # Delete gradient constraints (TODO: perhaps add constraints to avoid cycling?)
-            for con in constrs
-                delete(gm.model, con)
-            end
-        catch
-            # Delete gradient constraints (TODO: perhaps add constraints to avoid cycling?)
-            for con in constrs
-                delete(gm.model, con)
-            end
-            throw(error("Infeasible descend"))
+        # Delete gradient constraints (TODO: perhaps add constraints to avoid cycling?)
+        for con in constrs
+            delete(gm.model, con)
         end
     end
 
@@ -857,7 +849,7 @@ function globalsolve!(gm::GlobalModel; repair=true, sampling_methods=["boundary"
     @info "Solving MIP..."
     # print(gm.model)
 
-    set_optimizer_attribute(gm.model, "TimeLimit", 60)
+    # set_optimizer_attribute(gm.model, "TimeLimit", 60)
     optimize!(gm) 
 
     gm.relax_epsilon = JuMP.value.(gm.relax_var)[1]

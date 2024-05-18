@@ -1,23 +1,13 @@
 
 function mse(y_pred,y_true; weights = nothing, squared = true, dims=1)
     #_validate_distance_input(y_true, y_pred, weights)
-    result = (y_true .- y_pred[:]) .^ 2
+    result = (y_true .- y_pred) .^ 2
     result = !squared ? sqrt.(result) : result
     return weights == nothing ? mean(result) : mean(result .* weights)
 end
 
 function mas(y_pred,y_true; weights = nothing, squared = false, dims=1)
-    return mean(abs.(y_true .- y_pred[:]))
-end
-
-function get_num_neurons(n) 
-    if n < 10
-        return maximum([2*n, 10])
-    elseif n < 50
-        return 2*n
-    else
-        return 100
-    end
+    return mean(abs.(y_true .- y_pred))
 end
 
 loss = mse
@@ -73,8 +63,6 @@ function fit!(lnr::MLP_Regressor, X::DataFrame, Y::Array; equality=false)
 
     lnr.equality = equality
 
-    neurons = get_num_neurons(length(names(X)))
-
     # Convert dataframe to matrix 
     X = Matrix(X)
     lnr.train_data = X
@@ -83,8 +71,8 @@ function fit!(lnr::MLP_Regressor, X::DataFrame, Y::Array; equality=false)
 
     # Initialize model 
     net = MLP(
-        [Dense(size(X, 2), neurons), Dense(neurons, 1, identity)],
-        mse
+        [Dense(size(X, 2), 100), Dense(100, 1, identity)],
+        mas
     );
     lnr.mlp = net
     
@@ -92,7 +80,7 @@ function fit!(lnr::MLP_Regressor, X::DataFrame, Y::Array; equality=false)
     dtrn = minibatch(Float32.(X)', Float32.(Y), 16)
 
     # Train for 100 epochs
-    adam!(lnr.mlp, repeat(dtrn, 100));
+    adam!(lnr.mlp, repeat(dtrn, 500));
 
 end
 
@@ -104,15 +92,13 @@ function fit!(lnr::MLP_Classifier, X::DataFrame, Y::Array; equality=false)
 
     lnr.equality = equality
 
-    neurons = get_num_neurons(length(names(X)))
-
     # Convert dataframe to matrix 
     X = Matrix(X)
     
-    
     # Initialize model 
     net = MLP(
-        [Dense(size(X, 2), neurons) Dense(neurons, 2, identity)],
+        #[Dense(size(X, 2), 100),Dense(100, 100), Dense(100, 2, identity)],
+        [Dense(size(X, 2), 100), Dense(100, 2, identity)],
         nll
     );
     lnr.mlp = net
