@@ -151,3 +151,115 @@ function oos_gm!(op = oos_params())
 
     return gm
 end
+
+function oos_baron!(op = oos_params())
+    n = op.n_sats
+
+    # Making sure the orbits don't include the actual orbit of the satellite
+    op.r_orbits = filter!(r -> r != op.r_sat, op.r_orbits)  
+    op.orbital_periods = [2pi*sqrt(r^3/op.mu) for r in op.r_orbits]
+    op.transfer_time = [2*pi*sqrt((op.r_sat + r)^3/(8*op.mu)) for r in op.r_orbits]
+
+    # Starting a JuMP.Model
+    m = Model(SOLVER_SILENT)
+
+    @variable(m, 1.0025 >= dmass_entry[i=1:n-1] >= 1)
+    @variable(m, 1.0025 >= dmass_exit[i=1:n-1] >= 1)
+    # Locations xx, and sat_order (mostly for post_processing)
+    @variable(m, n >= sat_order[i=1:n] >= 1)
+    @variable(m, xx[1:n, 1:n], Bin)        # transfer occurs from row index to column index
+    set_lower_bound.(xx, 0)
+    set_upper_bound.(xx, 1)
+
+    # Maneuver time variables
+    @variable(m, 500 >= N_orbit[1:n-1] >= 50) # Artificial lower and upper bounds.
+    @variable(m,  maximum(abs.(op.period_sat .- op.orbital_periods)) >= dt_orbit[1:n-1] >= -maximum(abs.(op.period_sat .- op.orbital_periods)))
+    @variable(m, maximum(op.transfer_time) >= dt_transfer_orbit[1:n-1] >= minimum(op.transfer_time))
+    @variable(m, maximum(op.r_orbits) >= r_orbit[1:n-1] >= minimum(op.r_orbits))
+    @variable(m, maximum(op.orbital_periods) >= period_orbit[1:n-1] >= minimum(op.orbital_periods))
+
+    # Program can pick the best starting satellite as well. 
+    @constraint(m, [i=1:n], sat_order[i] == sum(xx[i, :] .* collect(1:n)))
+    @constraint(m, [i=1:n], sum(xx[i, :]) == 1) # Exactly one transfer every time (same as each satellite visited once)
+    @constraint(m, [i=1:n], sum(xx[:, i]) == 1)   # At most one transfer to each satellite
+
+    # # True anomaly computation from satellite order
+    @variable(m, pi >= ta[1:n-1] >= -pi)
+    @constraint(m, [i=1:n-1], ta[i] == sum(op.true_anomalies .* xx[i+1,:]) - 
+                                        sum(op.true_anomalies .* xx[i,:]))
+
+    # Fuel consumption (Watch these arbitrary upper bounds)
+    @variable(m, 2000 >= masses[1:n-1, 1:5] >= op.dry_mass)
+    @variable(m, 2000 >= wet_mass >= op.dry_mass)
+
+    # Orbit choice, and time and fuel cost
+    @variable(m, 1.0025 >= fractional_dmasses[1:n-1, j=1:4] >= 1) # reduction in masses in maneuvers
+    @constraint(m, [i=1:n-1], fractional_dmasses[i, 1] == dmass_entry[i])
+    @constraint(m, [i=1:n-1], fractional_dmasses[i, 2] == dmass_exit[i])
+    @constraint(m, [i=1:n-1], fractional_dmasses[i, 3] == dmass_exit[i])
+    @constraint(m, [i=1:n-1], fractional_dmasses[i, 4] == dmass_entry[i])
+
+    # Computing required fuel depending on transfer schedule
+    @variable(m, maximum(op.fuel_required) >= fuel_needed[1:n] >= minimum(op.fuel_required))
+    @constraint(m, [i=1:n], fuel_needed[i] == sum(xx[i, :] .* op.fuel_required))
+
+    # Mass conservation constraints (linear)
+    @constraint(m, wet_mass == masses[1, 1] + fuel_needed[1])
+    for i=1:n-1
+        @constraint(m, masses[i, 1] >= masses[i, 2])
+        @constraint(m, masses[i, 2] >= masses[i, 3])
+        @constraint(m, masses[i, 3] >= masses[i, 4])
+        @constraint(m, masses[i, 4] >= masses[i, 5])
+    end
+    @constraint(m, [i=1:n-2], masses[i, 5] == masses[i+1, 1] + fuel_needed[i+1])
+    @constraint(m, masses[n-1, 5] == op.dry_mass + fuel_needed[n])
+
+    # Maneuver time constraints (linear)
+    @constraint(m, [i=1:n-1], dt_orbit[i] == period_orbit[i] - op.period_sat)
+    @variable(m, 2 * op.maximum_time / op.n_sats >= t_maneuver[1:n-1] >= 0)
+    @constraint(m, sum(t_maneuver) <= op.maximum_time)
+
+    @objective(m, Min, wet_mass)
+    
+    @variable(m, dmass_entry_bin[i=1:n-1, j=1:2], Bin)
+    @constraint(m, [i=1:n-1], sum(dmass_entry_bin[i, :]) == 1)
+    @variable(m, dmass_exit_bin[i=1:n-1, j=1:2], Bin)
+    @constraint(m, [i=1:n-1], sum(dmass_exit_bin[i, :]) == 1)
+
+    # Upper bounding dmass_entry (big-M)
+    @NLconstraint(m, [i = 1:n-1], dmass_entry[i] <= 2*(1-dmass_entry_bin[i, 1]) + exp(1/(op.g*op.Isp) * (op.mu*r_orbit[i]^(-1))^0.5*((2 * op.r_sat*(op.r_sat + r_orbit[i])^(-1))^0.5-1)))
+    @NLconstraint(m, [i = 1:n-1], dmass_entry[i] <= 2*(1-dmass_entry_bin[i, 2]) + exp(1/(op.g*op.Isp) * (op.mu*op.r_sat^(-1))^0.5*((2 * r_orbit[i]*(op.r_sat + r_orbit[i])^(-1))^0.5-1)))
+
+    # Lower bounding dmass_entry
+    @NLconstraint(m, [i = 1:n-1], dmass_entry[i] >= exp(1/(op.g*op.Isp) * (op.mu*r_orbit[i]^(-1))^0.5*((2 * op.r_sat*(op.r_sat + r_orbit[i])^(-1))^0.5-1)))
+    @NLconstraint(m, [i = 1:n-1], dmass_entry[i] >= exp(1/(op.g*op.Isp) * (op.mu/op.r_sat)^0.5*((2 * r_orbit[i]*(op.r_sat + r_orbit[i])^(-1))^0.5-1)))
+
+    # Upper bounding dmass_exit (big-M)
+    @NLconstraint(m, [i = 1:n-1], dmass_exit[i] <= 2*(1 - dmass_exit_bin[i,1]) + exp(1/(op.g*op.Isp) * (op.mu*op.r_sat^(-1))^0.5*(1 - (2 * r_orbit[i]*(op.r_sat + r_orbit[i])^(-1))^0.5)))
+    @NLconstraint(m, [i = 1:n-1], dmass_exit[i] <= 2*(1 - dmass_exit_bin[i,2]) + exp(1/(op.g*op.Isp) * (op.mu*r_orbit[i]^(-1))^0.5*(1 - (2 * op.r_sat*(op.r_sat + r_orbit[i])^(-1))^0.5)))
+
+    # Lower bounding dmass_exit
+    @NLconstraint(m, [i = 1:n-1], dmass_exit[i] >= exp(1/(op.g*op.Isp) * (op.mu/op.r_sat)^0.5*(1 - (2 * r_orbit[i]*(op.r_sat + r_orbit[i])^(-1))^(0.5))))
+    @NLconstraint(m, [i = 1:n-1], dmass_exit[i] >= exp(1/(op.g*op.Isp) * (op.mu*r_orbit[i]^(-1))^0.5*(1 - (2 * op.r_sat*(op.r_sat + r_orbit[i])^(-1))^0.5)))
+
+    # Mass conservation constraints (bilinear)
+    @NLconstraint(m, [i = 1:n-1, j = 1:4], masses[i,j] == masses[i, j+1] * fractional_dmasses[i,j])
+
+    # Orbital period constraint (equality)
+    @NLconstraint(m, [i = 1:n-1], period_orbit[i] == 2*pi*(r_orbit[i]^3/op.mu)^0.5)
+
+    # Transfer time constraint
+    @NLconstraint(m, [i = 1:n-1], dt_transfer_orbit[i] == 2*pi*((op.r_sat + r_orbit[i])^3/(8*op.mu))^0.5)
+
+    # Orbital revolutions constraint (equality)
+    @NLconstraint(m, [i = 1:n-1], ta[i] == N_orbit[i]*dt_orbit[i]/op.period_sat)
+
+    # Maneuver time constraint
+    @NLconstraint(m, [i = 1:n-1], t_maneuver[i] == dt_transfer_orbit[i] + N_orbit[i] * period_orbit[i])
+
+    return m
+end
+
+# m = oos_baron!()
+# set_optimizer(m, BARON.Optimizer)
+# optimize!(m)
