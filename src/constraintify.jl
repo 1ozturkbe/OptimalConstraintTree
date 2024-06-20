@@ -341,7 +341,7 @@ Creates a set of MIO constraints from a OptimalTreeClassifier that thresholds a 
 Arguments:
 - m: JuMP.Model
 - x:: independent JuMP.Variables (features of learner)
-- y:: dependent JuMP.Variables
+- y:: dependent JuMP.Variable
 - lnr:: A fitted OptimalTreeLearner
 - ul_data:: Upper and lower bounding hyperplanes for data in leaves of lnr (empty by default)
 - symbs:: The varkeys corresponding to the lnr.

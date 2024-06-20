@@ -1,3 +1,4 @@
+include("check_solvers.jl")
 module OCTHaGOn
     using Combinatorics
     using CPLEX
@@ -20,6 +21,11 @@ module OCTHaGOn
     const VALID_OPTIMIZERS = [:Cbc, :CPLEX, :Gurobi, :GLPK, :Mosek, :SCIP]
     const SOLVER = CPLEX.Optimizer
     const SOLVER_SILENT = with_optimizer(SOLVER, CPX_PARAM_SCRIND = 0) 
+
+    # function silenced_solver(solver::MOI.AbstractOptimizer)
+    #     return with_optimizer(solver, CPX_PARAM_SCRIND = 0) 
+    # end
+    # const SOLVER_SILENT = silenced_solver(SOLVER)
 
     const PROJECT_ROOT = dirname(dirname(@__FILE__))
     const DATA_DIR = PROJECT_ROOT * "\\data\\"
